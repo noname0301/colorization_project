@@ -6,3 +6,5 @@ val2017/
 venv/
 checkpoints/
 models/
+test_dataset/
+test.py

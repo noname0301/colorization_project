@@ -43,9 +43,9 @@ def train_one_epoch(
             L_single = L[:, 0:1, :, :]           # (B,1,H,W)
 
             # Prepare Lab images for discriminator / perceptual loss
-            gt_lab = torch.cat([L_single, gt], dim=1)
+            gt_lab = torch.cat([L_single, gt], dim=1) 
             out_lab = torch.cat([L_single, pred], dim=1)
-        
+
         gt_rgb = K.lab_to_rgb(gt_lab)
         out_rgb = K.lab_to_rgb(out_lab)
 

@@ -55,8 +55,9 @@ def train_one_epoch(
             gt_lab = torch.cat([L_single, gt], dim=1)
             out_lab = torch.cat([L_single, pred], dim=1)
 
-            gt_rgb = K.color.lab_to_rgb(gt_lab)
-            out_rgb = K.color.lab_to_rgb(out_lab)
+            gt_rgb = K.lab_to_rgb(gt_lab)
+            out_rgb = K.lab_to_rgb(out_lab)
+
 
         # Update Discriminator
         d_optimizer.zero_grad()

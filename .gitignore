@@ -5,4 +5,4 @@ train2017/
 val2017/
 venv/
 checkpoints/
-model/
+models/

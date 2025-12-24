@@ -24,7 +24,7 @@ def train_one_epoch(
     g_optimizer, d_optimizer,
     l1_criterion, perceptual_criterion,
     gan_criterion, colorfulness_criterion,
-    scaler_g, scaler_d, device
+    scaler, device
 ):
     model.train()
     discriminator.train()
@@ -57,9 +57,11 @@ def train_one_epoch(
             d_fake = discriminator(out_lab.detach())  # detach to avoid G gradients
             D_loss = 0.5 * (gan_criterion(d_real, True, is_disc=True) + gan_criterion(d_fake, False, is_disc=True))
 
-        scaler_d.scale(D_loss).backward()
-        scaler_d.step(d_optimizer)
-        scaler_d.update()
+        scaler.scale(D_loss).backward()
+        scaler.unscale_(d_optimizer)
+        nn.utils.clip_grad_norm_(discriminator.parameters(), max_norm=1.0)
+        scaler.step(d_optimizer)
+        scaler.update()
 
         # Update Generator
         g_optimizer.zero_grad()
@@ -75,9 +77,11 @@ def train_one_epoch(
 
             G_loss = G_rec_loss + G_percep_loss + G_adv_loss + G_color_loss
 
-        scaler_g.scale(G_loss).backward()
-        scaler_g.step(g_optimizer)
-        scaler_g.update()
+        scaler.scale(G_loss).backward()
+        scaler.unscale_(g_optimizer)
+        nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        scaler.step(g_optimizer)
+        scaler.update()
 
         running_loss += G_loss.item() * L.size(0)
 
@@ -91,10 +95,9 @@ def train(model, discriminator, dataloader, g_optimizer, d_optimizer, l1_criteri
     start_time = time.time()
     train_losses = []
 
-    scaler_g = GradScaler(device=device.type)  
-    scaler_d = GradScaler(device=device.type)  
+    scaler = GradScaler(device=device.type)  
     for epoch in range(num_epochs):
-        epoch_loss = train_one_epoch(model, discriminator, dataloader, g_optimizer, d_optimizer, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, scaler_g, scaler_d, device)
+        epoch_loss = train_one_epoch(model, discriminator, dataloader, g_optimizer, d_optimizer, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, scaler, device)
         train_losses.append(epoch_loss)
         print(f'Epoch {epoch+1}, Train Loss: {epoch_loss:.4f}')
 

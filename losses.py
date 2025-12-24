@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torchvision.models import vgg16, VGG16_Weights
 
 class L1Loss(nn.Module):
-    def __init__(self, loss_weight, reduction="mean"):
+    def __init__(self, loss_weight=1.0, reduction="mean"):
         self.loss_weight = loss_weight
         self.reduction = reduction
 
@@ -14,8 +14,10 @@ class L1Loss(nn.Module):
 
 
 class PerceptualLoss(nn.Module):
-    def __init__(self, layer_weights=None, use_input_norm=True):
+    def __init__(self, loss_weight=1.0, layer_weights=None, use_input_norm=True):
         super().__init__()
+
+        self.loss_weight = loss_weight
 
         if layer_weights is None:
             layer_weights = {
@@ -61,12 +63,13 @@ class PerceptualLoss(nn.Module):
                 if id == i:
                     loss += self.layer_weights[name] * F.l1_loss(pred, target)
 
-        return loss
+        return self.loss_weight * loss
         
 
 class GANLoss(nn.Module):
-    def __init__(self, real_label_val=1.0, fake_label_val=0.0):
+    def __init__(self, loss_weight=1.0, real_label_val=1.0, fake_label_val=0.0):
         super().__init__()
+        self.loss_weight = loss_weight
         self.real_label_val = real_label_val
         self.fake_label_val = fake_label_val
         self.loss = nn.BCEWithLogitsLoss()
@@ -75,9 +78,10 @@ class GANLoss(nn.Module):
         target_val = self.real_label_val if target_is_real else self.fake_label_val
         return input.new_ones(input.size()) * target_val
 
-    def forward(self, input, target_is_real):
+    def forward(self, input, target_is_real, is_disc=False):
         target = self.get_target_label(input, target_is_real)
-        return self.loss(input, target)
+        loss = self.loss(input, target)
+        return loss if is_disc else loss * self.loss_weight
 
 
 class ColorfulnessLoss(nn.Module):

@@ -111,7 +111,7 @@ def train(model, discriminator, dataloader, g_optimizer, d_optimizer, l1_criteri
             save_checkpoint(model, discriminator, g_optimizer, d_optimizer, scaler, epoch)
     
     end_time = time.time()
-    torch.save(model, "model/ddcolor.pt")
+    torch.save(model, "models/ddcolor.pt")
 
     return train_losses, end_time - start_time
 

@@ -1,4 +1,5 @@
 __pycache__/
 *.pt
+train2017/
 val2017/
 venv/

@@ -1,7 +1,6 @@
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 class UnetBlock(nn.Module):
     def __init__(self, up_in_c, skip_in_c, n_out):

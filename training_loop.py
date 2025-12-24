@@ -4,7 +4,7 @@ import torch.nn as nn
 from torch.amp import GradScaler, autocast
 from torch.utils.data import DataLoader
 from model import DDColor
-from arch_utils.patchgan_utils import PatchDiscriminator
+from arch_utils.discriminator_arch import PatchDiscriminator
 from dataset import ImageDataset
 from losses import L1Loss, PerceptualLoss, GANLoss, ColorfulnessLoss
 import kornia.color as K
@@ -142,12 +142,12 @@ if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = DDColor("convnext-t", num_queries=100, num_scales=3, nf=512, num_channels=2).to(device)
-    discriminator = PatchDiscriminator(in_channels=3, ndf=64).to(device)
+    discriminator = PatchDiscriminator(in_channels=3, nf=64, n_blocks=3).to(device)
 
 
     l1_criterion = L1Loss(loss_weight=0.1).to(device)
     perceptual_criterion = PerceptualLoss(loss_weight=5.0).to(device)
-    gan_criterion = GANLoss(loss_weight=1.0, real_label_val=0.9, fake_label_val=0.1).to(device)
+    gan_criterion = GANLoss(loss_weight=1.0, real_label_val=1.0, fake_label_val=0.0).to(device)
     colorfulness_criterion = ColorfulnessLoss(loss_weight=0.5).to(device)
 
     g_optimizer = torch.optim.AdamW(model.parameters(), lr=LR, betas=(0.9, 0.99), weight_decay=0.01)

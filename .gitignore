@@ -1,5 +1,8 @@
 __pycache__/
 *.pt
+*.pth
 train2017/
 val2017/
 venv/
+checkpoints/
+model/

@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 from torch.amp import GradScaler, autocast
@@ -105,15 +106,45 @@ def train(model, discriminator, dataloader, g_optimizer, d_optimizer, l1_criteri
         epoch_loss = train_one_epoch(model, discriminator, dataloader, g_optimizer, d_optimizer, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, scaler, device)
         train_losses.append(epoch_loss)
         print(f'Epoch {epoch+1}, Train Loss: {epoch_loss:.4f}')
+
+        if (epoch+1) % 10 == 0:
+            save_checkpoint(model, discriminator, g_optimizer, d_optimizer, scaler, epoch)
     
     end_time = time.time()
     torch.save(model, "ddcolor.pt")
 
     return train_losses, end_time - start_time
 
+def save_checkpoint(model, discriminator, g_optimizer, d_optimizer, scaler, epoch, save_dir="checkpoints", prefix="ddcolor"):
+    """
+    Save a full training checkpoint.
+    
+    Args:
+        model: Generator model
+        discriminator: Discriminator model
+        g_optimizer: Generator optimizer
+        d_optimizer: Discriminator optimizer
+        scaler: GradScaler for mixed precision
+        epoch: Current epoch number
+        save_dir: Directory to save checkpoints
+        prefix: Filename prefix
+    """
+    os.makedirs(save_dir, exist_ok=True)
+    checkpoint = {
+        "epoch": epoch,
+        "generator_state_dict": model.state_dict(),
+        "discriminator_state_dict": discriminator.state_dict(),
+        "g_optimizer_state_dict": g_optimizer.state_dict(),
+        "d_optimizer_state_dict": d_optimizer.state_dict(),
+        "scaler_state_dict": scaler.state_dict()
+    }
+    path = os.path.join(save_dir, f"{prefix}_epoch{epoch}.pth")
+    torch.save(checkpoint, path)
+    print(f"[INFO] Checkpoint saved at {path}")
+
 
 if __name__ == '__main__':
-    train_losses, train_time = train(model, discriminator, dataloader, g_optimizer, d_optimizer, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, device, num_epochs=10)
+    train_losses, train_time = train(model, discriminator, dataloader, g_optimizer, d_optimizer, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, device, num_epochs=50)
     print(f'Total training time: {train_time:.2f}s')
 
     # Visualize result

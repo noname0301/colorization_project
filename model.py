@@ -4,7 +4,6 @@ from torchvision.models import convnext_tiny, ConvNeXt_Tiny_Weights, convnext_la
 from arch_utils.transformer_utils import SelfAttentionLayer, CrossAttentionLayer, FFNLayer, MLP
 from arch_utils.positional_encoding import PositionEmbeddingSine
 from arch_utils.unet_utils import UnetBlock
-from arch_utils.patchgan_utils import PatchDiscriminator
     
 
 class DDColor(nn.Module):

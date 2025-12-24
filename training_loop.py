@@ -12,9 +12,9 @@ import time
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
-
+BATCH_SIZE = 16
 dataset = ImageDataset('train2017/')
-dataloader = DataLoader(dataset, batch_size=8, shuffle=True, num_workers=4, pin_memory=True)
+dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -108,7 +108,7 @@ def train(model, discriminator, dataloader, g_optimizer, d_optimizer, l1_criteri
         print(f'Epoch {epoch+1}, Train Loss: {epoch_loss:.4f}')
 
         if (epoch+1) % 10 == 0:
-            save_checkpoint(model, discriminator, g_optimizer, d_optimizer, scaler, epoch)
+            save_checkpoint(model, discriminator, g_optimizer, d_optimizer, scaler, epoch+1)
     
     end_time = time.time()
     torch.save(model, "models/ddcolor.pt")

@@ -13,7 +13,7 @@ class ImageDataset(Dataset):
         self.transform = transform
 
     def __len__(self):
-        return len(self.filenames)
+        return min(len(self.filenames), 20000)
 
     def __getitem__(self, idx):
         name = self.filenames[idx]
@@ -36,7 +36,6 @@ class ImageDataset(Dataset):
     
 
 if __name__ == '__main__':
-    dataset = ImageDataset('val2017/')
+    dataset = ImageDataset('train2017/')
     print(len(dataset))
     L, gt = dataset[0]
-    print(gt)

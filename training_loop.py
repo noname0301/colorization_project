@@ -17,7 +17,7 @@ dataloader = DataLoader(dataset, batch_size=8, shuffle=True, num_workers=4, pin_
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-model = DDColor("convnext-t", num_queries=100, num_scales=3, nf=512, num_channels=3).to(device)
+model = DDColor("convnext-t", num_queries=100, num_scales=3, nf=512, num_channels=2).to(device)
 discriminator = PatchDiscriminator(in_channels=3, ndf=64).to(device)
 
 

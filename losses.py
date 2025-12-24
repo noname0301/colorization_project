@@ -5,6 +5,7 @@ from torchvision.models import vgg16, VGG16_Weights
 
 class L1Loss(nn.Module):
     def __init__(self, loss_weight=1.0, reduction="mean"):
+        super().__init__()
         self.loss_weight = loss_weight
         self.reduction = reduction
 
@@ -93,7 +94,7 @@ class ColorfulnessLoss(nn.Module):
     """
 
     def __init__(self, loss_weight=1.0):
-        super(ColorfulnessLoss, self).__init__()
+        super().__init__()
 
         self.loss_weight = loss_weight
 

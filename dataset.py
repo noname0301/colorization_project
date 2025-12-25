@@ -23,8 +23,8 @@ class ImageDataset(Dataset):
 
         # Convert to LAB and take L channel
         img = K.rgb_to_lab(img.unsqueeze(0)).squeeze(0)  # 3xHxW
-        gt = img[1:, :, :]
-        L = img[0:1, :, :]  # 1xHxW
+        gt = img[1:, :, :] / 128.0
+        L = img[0:1, :, :] / 100.0  # 1xHxW
         L = L.repeat(3, 1, 1)  # 3xHxW to feed the 3-channel encoder
 
         if self.transform:

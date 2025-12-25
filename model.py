@@ -21,7 +21,6 @@ class DDColor(nn.Module):
         assert encoder_name == "convnext-t" or encoder_name == "convnext-l"
 
         self.encoder = ImageEncoder(encoder_name)
-        self.encoder.eval()
         self.decoder = DualDecoder(encoder_name, num_queries, num_scales, nf)
         self.final_conv = nn.Conv2d(num_queries, num_channels, 1)
 

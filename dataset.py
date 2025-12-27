@@ -2,7 +2,7 @@ import os
 import cv2
 import torch
 from torch.utils.data import Dataset
-import kornia.color as K
+import numpy as np
 
 
 class ImageDataset(Dataset):
@@ -12,29 +12,33 @@ class ImageDataset(Dataset):
         self.transform = transform
 
     def __len__(self):
-        return min(len(self.filenames), 20000)
+        return len(self.filenames)
 
     def __getitem__(self, idx):
         name = self.filenames[idx]
+
         img = cv2.imread(os.path.join(self.root_dir, name))
-        img = cv2.resize(img, (256, 256))
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # convert to RGB
-        img = torch.from_numpy(img).permute(2,0,1).float() / 255.0  # CxHxW
+        img = (img / 255.0).astype(np.float32)
+        img_resized = cv2.resize(img, (256, 256))
 
-        # Convert to LAB and take L channel
-        img = K.rgb_to_lab(img.unsqueeze(0)).squeeze(0)  # 3xHxW
-        gt = img[1:, :, :] / 128.0
-        L = img[0:1, :, :] / 100.0  # 1xHxW
-        L = L.repeat(3, 1, 1)  # 3xHxW to feed the 3-channel encoder
+        img_lab = cv2.cvtColor(img_resized, cv2.COLOR_BGR2Lab)
+        img_l = img_lab[:, :, :1]
+        img_ab = img_lab[:, :, 1:]
 
-        if self.transform:
-            L = self.transform(L)
-            gt = self.transform(gt)
+        img_gray_lab = np.concatenate((img_l, np.zeros_like(img_l), np.zeros_like(img_l)), axis=-1)
+        img_gray_rgb = cv2.cvtColor(img_gray_lab, cv2.COLOR_LAB2RGB)
 
-        return L, gt
+        tensor_gray_rgb = torch.from_numpy(img_gray_rgb.transpose((2, 0, 1))).float()
+        tensor_ab = torch.from_numpy(img_ab.transpose((2, 0, 1))).float()
+
+        tensor_l = torch.from_numpy(img_l.transpose((2, 0, 1))).float()
+        tensor_rgb = torch.from_numpy(img_resized.transpose((2, 0, 1))).float()
+
+        return tensor_gray_rgb, tensor_rgb, tensor_l, tensor_ab
     
 
 if __name__ == '__main__':
     dataset = ImageDataset('train2017/')
     print(len(dataset))
-    L, gt = dataset[0]
+
+

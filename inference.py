@@ -1,7 +1,6 @@
 import torch
 from model import DDColor
 import cv2
-import kornia.color as K
 import numpy as np
 import os
 
@@ -12,24 +11,32 @@ def inference(model, image):
     return output
 
 if __name__ == '__main__':
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = DDColor("convnext-t", num_queries=100, num_scales=3, nf=512, num_channels=2).to(device)
-    model.load_state_dict(torch.load("checkpoints/ddcolor_epoch200.pth")["generator_state_dict"])
-    os.makedirs("output", exist_ok=True)
-    for filename in os.listdir("test_dataset/"):
-        img = cv2.imread("test_dataset/" + filename)
+    device = torch.device("cpu")
+    model = DDColor("convnext-t", num_queries=100, num_scales=3, nf=512, num_output_channels=2).to(device)
+    model.load_state_dict(torch.load("checkpoints2/ddcolor_epoch10.pth")["generator_state_dict"])
+    root_dir = "val_input_test/"
+    output_dir = "val_output/"
+
+    os.makedirs(output_dir, exist_ok=True)
+    for filename in os.listdir(root_dir):
+        img = cv2.imread(root_dir + filename)
+        img = (img / 255.0).astype(np.float32)
         img = cv2.resize(img, (256, 256))
-        img = torch.from_numpy(img).permute(2,0,1).float() / 255.0  # CxHxW
-        img = K.rgb_to_lab(img.unsqueeze(0)).squeeze(0)
-        L_single = img[0:1, :, :] / 100.0  # 1xHxW
-        L = L_single.repeat(3, 1, 1) # 3xHxW to feed the 3-channel encoder
-        L = L.unsqueeze(0).to(device)
+        img_lab = cv2.cvtColor(img, cv2.COLOR_BGR2Lab)
+        img_ab = img_lab[:, :, 1:]
+        img_l = img_lab[:, :, :1]
+        img_gray_lab = np.concatenate((img_l, np.zeros_like(img_l), np.zeros_like(img_l)), axis=-1)
+        img_gray_rgb = cv2.cvtColor(img_gray_lab, cv2.COLOR_Lab2RGB)
 
-        output = inference(model, L)
+        tensor_gray_rgb = torch.from_numpy(img_gray_rgb.transpose((2, 0, 1))).float()
 
+        out_ab_batch = inference(model, tensor_gray_rgb.unsqueeze(0).to(device))
+        out_ab = out_ab_batch[0].cpu().numpy().transpose((1, 2, 0))
 
-        output = K.lab_to_rgb(torch.cat([(L_single * 100).unsqueeze(0).to(device), output.clamp(-1,1) * 128], dim=1)).squeeze(0)  # 3xHxW
-        output = output.permute(1,2,0).cpu().numpy()
-        output = (output * 255).astype(np.uint8)
-        output = cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
-        cv2.imwrite("output/" + filename, output)
+        out_lab = np.concatenate((img_l, out_ab), axis=-1)
+        out_lab[:,:,1] = np.clip(out_lab[:,:,1], -127, 127)
+        out_lab[:,:,2] = np.clip(out_lab[:,:,2], -127, 127)
+
+        out_bgr = cv2.cvtColor(out_lab, cv2.COLOR_Lab2BGR)
+        out_bgr_uint8 = np.clip(out_bgr * 255.0, 0, 255).astype(np.uint8)
+        cv2.imwrite(output_dir + filename, out_bgr_uint8)

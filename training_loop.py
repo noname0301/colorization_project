@@ -4,130 +4,186 @@ import torch.nn as nn
 from torch.amp import GradScaler, autocast
 from torch.utils.data import DataLoader
 from model import DDColor
-from arch_utils.discriminator_arch import PatchDiscriminator
+from arch_utils.discriminator_arch import DynamicUNetDiscriminator
 from dataset import ImageDataset
-from losses import L1Loss, PerceptualLoss, GANLoss, ColorfulnessLoss
-import kornia.color as K
+from losses import L1Loss, PerceptualLoss, VanillaGANLoss, ColorfulnessLoss
+from utils.img_utils import tensor_lab2rgb
 import time
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-
+from torch.optim.lr_scheduler import StepLR
 
 # Config
 BATCH_SIZE = 12
-NUM_EPOCHS = 50
+NUM_EPOCHS = 20
 GENERATOR_LR = 1e-4
-DISCRIMINATOR_LR = 4e-4
+DISCRIMINATOR_LR = 1e-4
 
 
 def train_one_epoch(
-    model, discriminator, dataloader,
+    generator, discriminator, dataloader,
     g_optimizer, d_optimizer,
     l1_criterion, perceptual_criterion,
-    gan_criterion, colorfulness_criterion,
-    scaler, device
+    gan_criterion, colorfulness_criterion, scaler, device
 ):
-    model.train()
+    generator.train()
     discriminator.train()
-    running_loss = 0.0
-    running_g_rec = 0.0
-    running_g_perc = 0.0
-    running_g_adv = 0.0
-    running_g_color = 0.0
+    running_g_loss = 0.0
+    running_g_rec_loss = 0.0
+    running_g_percep_loss = 0.0
+    running_g_gan_loss = 0.0
+    running_g_colorfulness_loss = 0.0
+
+    running_d_loss = 0.0
 
     loop = tqdm(dataloader, leave=True)
 
-    for L, gt in loop:
-        L = L.to(device)
-        gt = gt.to(device)
+    for gray_rgb, gt_rgb, l, gt_ab in loop:
+        gray_rgb = gray_rgb.to(device)
+        gt_rgb = gt_rgb.to(device)
+        l = l.to(device)
+        gt_ab = gt_ab.to(device)
 
-        # Generator forward pass
-        with autocast(device_type=device.type):
-            pred = model(L)    
-            pred = pred.clamp(-1, 1)                   # (B,2,H,W) normalized a/b channels
-            L_single = L[:, 0:1, :, :]           # (B,1,H,W), normalized 0-1
+        # Optimize generator
+        for param in discriminator.parameters():
+            param.requires_grad = False
 
-            # Rescale L and ab back to LAB ranges for conversion
-            gt_lab = torch.cat([
-                L_single * 100,                  # L channel 0-100
-                gt * 128                          # a,b channels -128 to 127
-            ], dim=1)
-
-            out_lab = torch.cat([
-                L_single * 100,
-                pred * 128            # clamp to [-1,1] then scale
-            ], dim=1)
-
-        # Convert to RGB (values 0-1)
-        gt_rgb = K.lab_to_rgb(gt_lab).clamp(0, 1)
-        out_rgb = K.lab_to_rgb(out_lab).clamp(0, 1)
-
-
-        # Update Discriminator
-        d_optimizer.zero_grad()
-        with autocast(device_type=device.type):
-            d_real_input = torch.cat([L_single, gt], dim=1)        # (B,3,H,W), normalized
-            d_fake_input = torch.cat([L_single, pred], dim=1)      # (B,3,H,W), normalized  
-            d_real = discriminator(d_real_input)
-            d_fake = discriminator(d_fake_input.detach())  # detach to avoid G gradients
-            D_loss = 0.5 * (gan_criterion(d_real, True, is_disc=True) + gan_criterion(d_fake, False, is_disc=True))
-
-        scaler.scale(D_loss).backward()
-        scaler.unscale_(d_optimizer)
-        nn.utils.clip_grad_norm_(discriminator.parameters(), max_norm=1.0)
-        scaler.step(d_optimizer)
-        scaler.update()
-
-        # Update Generator
         g_optimizer.zero_grad()
+
         with autocast(device_type=device.type):
-            # Re-run discriminator on fake images
-            d_fake_for_G = discriminator(d_fake_input)
-            G_adv_loss = gan_criterion(d_fake_for_G, True, is_disc=False)
+            output_ab = generator(gray_rgb)
 
-            # Reconstruction + perceptual + colorfulness losses
-            G_rec_loss = l1_criterion(pred, gt)
-            G_percep_loss = perceptual_criterion(out_rgb, gt_rgb)
-            G_color_loss = colorfulness_criterion(out_rgb)
+        output_lab = torch.cat([l, output_ab], dim=1)
+        output_rgb = tensor_lab2rgb(output_lab)
 
-            G_loss = G_rec_loss + G_percep_loss + G_adv_loss + G_color_loss
+        with autocast(device_type=device.type):
+            fake_g_pred = discriminator(output_rgb)
 
-        scaler.scale(G_loss).backward()
-        scaler.unscale_(g_optimizer)
-        nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            rec_loss = l1_criterion(output_ab, gt_ab)
+            percep_loss = perceptual_criterion(output_rgb, gt_rgb)
+            gan_loss = gan_criterion(fake_g_pred, True, is_disc=False)
+            colorfulness_loss = colorfulness_criterion(output_rgb)
+
+            loss_g = rec_loss + percep_loss + gan_loss + colorfulness_loss
+
+        scaler.scale(loss_g).backward()
         scaler.step(g_optimizer)
         scaler.update()
 
-        running_loss += G_loss.item()
-        running_g_rec += G_rec_loss.item()
-        running_g_perc += G_percep_loss.item()
-        running_g_adv += G_adv_loss.item()
-        running_g_color += G_color_loss.item()
 
-        loop.set_description(
-            f"G: {G_loss.item():.2f} | "
-            f"Rec: {G_rec_loss.item():.2f} | "
-            f"Perc: {G_percep_loss.item():.2f} | "
-            f"Adv: {G_adv_loss.item():.2f} | "
-            f"Color: {G_color_loss.item():.2f}"
-        )
+        # Optimize discriminator
+        for param in discriminator.parameters():
+            param.requires_grad = True
+
+        d_optimizer.zero_grad()
+
+        with autocast(device_type=device.type):
+            real_d_pred = discriminator(gt_rgb)
+            fake_d_pred = discriminator(output_rgb.detach())
+            loss_d = gan_criterion(real_d_pred, True, is_disc=True) + gan_criterion(fake_d_pred, False, is_disc=True)
+
+        scaler.scale(loss_d).backward()
+        scaler.step(d_optimizer)
+        scaler.update()
+
+        running_g_loss += loss_g.item()
+        running_g_rec_loss += rec_loss.item()
+        running_g_percep_loss += percep_loss.item()
+        running_g_gan_loss += gan_loss.item()
+        running_g_colorfulness_loss += colorfulness_loss.item()
+        running_d_loss += loss_d.item()
+
+        loop.set_description(f"Total_G: {loss_g.item():.4f}, Rec: {rec_loss.item():.4f}, Percep: {percep_loss.item():.4f}, GAN: {gan_loss.item():.4f}, Color: {colorfulness_loss.item():.4f}, D: {loss_d.item():.4f}")
+
+    epoch_losses = {
+        'g_loss': running_g_loss / len(dataloader),
+        'g_rec_loss': running_g_rec_loss / len(dataloader),
+        'g_percep_loss': running_g_percep_loss / len(dataloader),
+        'g_gan_loss': running_g_gan_loss / len(dataloader),
+        'g_colorfulness_loss': running_g_colorfulness_loss / len(dataloader),
+        'd_loss': running_d_loss / len(dataloader),
+    }
+    return epoch_losses
 
 
-    epoch_loss = running_loss / len(dataloader.dataset)
-    return epoch_loss
+def calculate_val_loss(generator, dataloader, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, device):
+    generator.eval()
+    running_g_loss = 0.0
+    running_g_rec_loss = 0.0
+    running_g_percep_loss = 0.0
+    running_g_gan_loss = 0.0
+    running_g_colorfulness_loss = 0.0
 
-def train(model, discriminator, dataloader, g_optimizer, d_optimizer, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, device, num_epochs=10):
+    loop = tqdm(dataloader, leave=True)
+
+    for gray_rgb, gt_rgb, l, gt_ab in loop:
+        gray_rgb = gray_rgb.to(device)
+        gt_rgb = gt_rgb.to(device)
+        l = l.to(device)
+        gt_ab = gt_ab.to(device)
+
+        with autocast(device_type=device.type):
+            output_ab = generator(gray_rgb)
+
+        output_lab = torch.cat([l, output_ab], dim=1)
+        output_rgb = tensor_lab2rgb(output_lab)
+
+        with autocast(device_type=device.type):
+            fake_g_pred = discriminator(output_rgb)
+
+            rec_loss = l1_criterion(output_ab, gt_ab)
+            percep_loss = perceptual_criterion(output_rgb, gt_rgb)
+            gan_loss = gan_criterion(fake_g_pred, True, is_disc=False)  
+            colorfulness_loss = colorfulness_criterion(output_rgb)
+
+            loss_g = rec_loss + percep_loss + gan_loss + colorfulness_loss
+
+        running_g_loss += loss_g.item()
+        running_g_rec_loss += rec_loss.item()
+        running_g_percep_loss += percep_loss.item()
+        running_g_gan_loss += gan_loss.item()
+        running_g_colorfulness_loss += colorfulness_loss.item()
+
+        loop.set_description(f"Total_G: {loss_g.item():.4f}, Rec: {rec_loss.item():.4f}, Percep: {percep_loss.item():.4f}, GAN: {gan_loss.item():.4f}, Color: {colorfulness_loss.item():.4f}")
+
+    epoch_losses = {
+        'g_loss': running_g_loss / len(dataloader),
+        'g_rec_loss': running_g_rec_loss / len(dataloader),
+        'g_percep_loss': running_g_percep_loss / len(dataloader),
+        'g_gan_loss': running_g_gan_loss / len(dataloader),
+        'g_colorfulness_loss': running_g_colorfulness_loss / len(dataloader),
+    }
+    return epoch_losses
+
+
+def train(model, discriminator, train_loader, val_loader, g_optimizer, d_optimizer, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, device, num_epochs=10, current_epoch=0):
     start_time = time.time()
     train_losses = []
+    val_losses = []
 
-    scaler = GradScaler(device=device.type)  
-    for epoch in range(num_epochs):
-        epoch_loss = train_one_epoch(model, discriminator, dataloader, g_optimizer, d_optimizer, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, scaler, device)
-        train_losses.append(epoch_loss)
-        print(f'Epoch {epoch+1}, Train Loss: {epoch_loss:.4f}')
+    scaler = GradScaler()
 
-        if (epoch+1) % 10 == 0:
-            save_checkpoint(model, discriminator, g_optimizer, d_optimizer, epoch+1)
+    g_scheduler = StepLR(
+        g_optimizer, step_size=10, gamma=0.5
+    )
+    d_scheduler = StepLR(
+        d_optimizer, step_size=10, gamma=0.5
+    )
+
+    for epoch in range(current_epoch, num_epochs):
+        epoch_losses = train_one_epoch(model, discriminator, train_loader, g_optimizer, d_optimizer, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, scaler, device)
+        train_losses.append(epoch_losses)
+        print(f'Epoch {epoch+1}, Train Loss: {epoch_losses}')
+
+        g_scheduler.step()
+        d_scheduler.step()
+
+        val_loss = calculate_val_loss(model, val_loader, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, device)
+        val_losses.append(val_loss)
+        print(f'Epoch {epoch+1}, Val Loss: {val_loss}')
+
+        if (epoch+1) % 2 == 0:
+            save_checkpoint(model, discriminator, g_optimizer, d_optimizer, epoch+1, save_dir="checkpoints")
     
     end_time = time.time()
 
@@ -160,24 +216,34 @@ def save_checkpoint(model, discriminator, g_optimizer, d_optimizer, epoch, save_
 
 
 if __name__ == '__main__':
-    dataset = ImageDataset('train2017/')
-    dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True)
+    train_dataset = ImageDataset('train2017/')
+    val_dataset = ImageDataset('val2017/')
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True)
+
+    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True)
+
+    current_checkpoint = None
+    current_epoch = 0
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    model = DDColor("convnext-t", num_queries=100, num_scales=3, nf=512, num_channels=2).to(device)
-    discriminator = PatchDiscriminator(in_channels=3, nf=64, n_blocks=3).to(device)
+    model = DDColor(num_queries=100, num_scales=3, nf=512, num_output_channels=2).to(device)
+
+    if current_checkpoint is not None:
+        checkpoint = torch.load(current_checkpoint, map_location=device)
+        model.load_state_dict(checkpoint["generator_state_dict"])
+    discriminator = DynamicUNetDiscriminator(n_channels=3, nf=64, n_blocks=3).to(device)
 
 
-    l1_criterion = L1Loss(loss_weight=1.0).to(device)
-    perceptual_criterion = PerceptualLoss(loss_weight=0.3).to(device)
-    gan_criterion = GANLoss(loss_weight=0.01, real_label_val=0.9, fake_label_val=0.1).to(device)
+    l1_criterion = L1Loss(loss_weight=0.1).to(device)
+    perceptual_criterion = PerceptualLoss(layer_weights={'conv1_1': 0.0625, 'conv2_1': 0.125, 'conv3_1': 0.25, 'conv4_1': 0.5, 'conv5_1': 1.0}, perceptual_weight=5.0).to(device)
+    gan_criterion = VanillaGANLoss(real_label_val=1.0, fake_label_val=0.0, loss_weight=1.0).to(device)
     colorfulness_criterion = ColorfulnessLoss(loss_weight=0.5).to(device)
 
     g_optimizer = torch.optim.AdamW(model.parameters(), lr=GENERATOR_LR, betas=(0.9, 0.99), weight_decay=0.01)
     d_optimizer = torch.optim.Adam(discriminator.parameters(), lr=DISCRIMINATOR_LR, betas=(0.9, 0.99))
 
-    train_losses, train_time = train(model, discriminator, dataloader, g_optimizer, d_optimizer, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, device, num_epochs=NUM_EPOCHS)
+    train_losses, train_time = train(model, discriminator, train_loader, val_loader, g_optimizer, d_optimizer, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, device, num_epochs=NUM_EPOCHS, current_epoch=current_epoch)
     print(f'Total training time: {train_time:.2f}s')
 
     # Visualize result

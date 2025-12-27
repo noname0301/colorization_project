@@ -1,87 +1,125 @@
+import math
 import torch
+from torch import autograd as autograd
 import torch.nn as nn
-import torch.nn.functional as F
-from torchvision.models import vgg16, VGG16_Weights
+from torch.nn import functional as F
+
+from arch_utils.vgg_arch import VGGFeatureExtractor
+
 
 class L1Loss(nn.Module):
-    def __init__(self, loss_weight=1.0, reduction="mean"):
-        super().__init__()
+    def __init__(self, loss_weight=1.0, reduction='mean'):
+        super(L1Loss, self).__init__()
+
         self.loss_weight = loss_weight
         self.reduction = reduction
 
-    def forward(self, pred, target, weight=None):
-        return self.loss_weight * F.l1_loss(pred, target, weight=weight, reduction=self.reduction)
-    
+    def forward(self, pred, target):
+        """
+        Args:
+            pred (Tensor): of shape (N, C, H, W). Predicted tensor.
+            target (Tensor): of shape (N, C, H, W). Ground truth tensor.
+        """
+        return self.loss_weight * F.l1_loss(pred, target, reduction=self.reduction)
 
 
 class PerceptualLoss(nn.Module):
-    def __init__(self, loss_weight=1.0, layer_weights=None, use_input_norm=True):
-        super().__init__()
+    """Perceptual loss with commonly used style loss.
 
-        self.loss_weight = loss_weight
+    Args:
+        layer_weights (dict): The weight for each layer of vgg feature.
+            Here is an example: {'conv5_4': 1.}, which means the conv5_4
+            feature layer (before relu5_4) will be extracted with weight
+            1.0 in calculating losses.
+        use_input_norm (bool):  If True, normalize the input image in vgg.
+            Default: True.
+        perceptual_weight (float): The perceptual loss will be calculated and the loss will multiplied by the weight.
+            Default: 1.0.
+    """
 
-        if layer_weights is None:
-            layer_weights = {
-                'conv1_1': 0.0625,
-                'conv2_1': 0.125,
-                'conv3_1': 0.25,
-                'conv4_1': 0.5,
-                'conv5_1': 1.0,
-            }
+    def __init__(self,
+                 layer_weights,
+                 use_input_norm=True,
+                 perceptual_weight=1.0):
+        super(PerceptualLoss, self).__init__()
+        self.perceptual_weight = perceptual_weight
         self.layer_weights = layer_weights
-        
-        self.layer_ids = {
-            'conv1_1': 0,
-            'conv2_1': 5,
-            'conv3_1': 10,
-            'conv4_1': 17,
-            'conv5_1': 24
-        }
+        self.vgg = VGGFeatureExtractor(
+            layer_name_list=list(layer_weights.keys()),
+            use_input_norm=use_input_norm)
 
-        self.vgg = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
-        self.vgg.eval()
-        self.vgg.requires_grad_(False)
 
-        self.use_input_norm = use_input_norm
-        if use_input_norm:
-            self.register_buffer('mean', torch.tensor([0.485, 0.456, 0.406]).view(1,3,1,1))
-            self.register_buffer('std', torch.tensor([0.229, 0.224, 0.225]).view(1,3,1,1))
+    def forward(self, x, gt):
+        """Forward function.
 
-    
-    def forward(self, pred, target):
-        if self.use_input_norm:
-            pred = (pred - self.mean) / self.std
-            target = (target - self.mean) / self.std
+        Args:
+            x (Tensor): Input tensor with shape (n, c, h, w).
+            gt (Tensor): Ground-truth tensor with shape (n, c, h, w).
 
-        loss = 0.0
-        features = self.vgg.features
-    
-        for i, layer in enumerate(features):
-            pred = layer(pred)
-            target = layer(target)
+        Returns:
+            Tensor: Forward results.
+        """
+        # extract vgg features
+        x_features = self.vgg(x)
+        gt_features = self.vgg(gt.detach())
 
-            for name, id in self.layer_ids.items():
-                if id == i:
-                    loss += self.layer_weights[name] * F.l1_loss(pred, target)
+        # calculate perceptual loss
+        percep_loss = 0
+        for k in x_features.keys():
+            percep_loss += F.l1_loss(x_features[k], gt_features[k]) * self.layer_weights[k]
+        percep_loss *= self.perceptual_weight
 
-        return self.loss_weight * loss
-        
+        return percep_loss
 
-class GANLoss(nn.Module):
-    def __init__(self, loss_weight=1.0, real_label_val=1.0, fake_label_val=0.0):
+
+class VanillaGANLoss(nn.Module):
+    """Define GAN loss.
+
+    Args:
+        real_label_val (float): The value for real label. Default: 1.0.
+        fake_label_val (float): The value for fake label. Default: 0.0.
+        loss_weight (float): Loss weight. Default: 1.0.
+            Note that loss_weight is only for generators; and it is always 1.0
+            for discriminators.
+    """
+
+    def __init__(self, real_label_val=1.0, fake_label_val=0.0, loss_weight=1.0):
         super().__init__()
         self.loss_weight = loss_weight
         self.real_label_val = real_label_val
         self.fake_label_val = fake_label_val
+
         self.loss = nn.BCEWithLogitsLoss()
 
     def get_target_label(self, input, target_is_real):
-        target_val = self.real_label_val if target_is_real else self.fake_label_val
+        """Get target label.
+
+        Args:
+            input (Tensor): Input tensor.
+            target_is_real (bool): Whether the target is real or fake.
+
+        Returns:
+            (Tensor): Target tensor.
+        """
+        target_val = (self.real_label_val if target_is_real else self.fake_label_val)
         return input.new_ones(input.size()) * target_val
 
     def forward(self, input, target_is_real, is_disc=False):
-        target = self.get_target_label(input, target_is_real)
-        loss = self.loss(input, target)
+        """
+        Args:
+            input (Tensor): The input for the loss module, i.e., the network
+                prediction.
+            target_is_real (bool): Whether the targe is real or fake.
+            is_disc (bool): Whether the loss for discriminators or not.
+                Default: False.
+
+        Returns:
+            Tensor: GAN loss value.
+        """
+        target_label = self.get_target_label(input, target_is_real)
+        loss = self.loss(input, target_label)
+
+        # loss_weight is always 1.0 for discriminators
         return loss if is_disc else loss * self.loss_weight
 
 
@@ -94,8 +132,7 @@ class ColorfulnessLoss(nn.Module):
     """
 
     def __init__(self, loss_weight=1.0):
-        super().__init__()
-
+        super(ColorfulnessLoss, self).__init__()
         self.loss_weight = loss_weight
 
     def forward(self, pred, **kwargs):
@@ -115,6 +152,3 @@ class ColorfulnessLoss(nn.Module):
             colorfulness = stdRoot + (0.3 * meanRoot)
             colorfulness_loss += (1 - colorfulness)
         return self.loss_weight * colorfulness_loss
-
-if __name__ == "__main__":
-    pass

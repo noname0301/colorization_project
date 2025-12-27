@@ -107,29 +107,29 @@ def train_one_epoch(
     return epoch_loss
 
 
-def calculate_val_loss(generator, dataloader, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, device):
+def calculate_val_loss(generator, discriminator, val_loader, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, device):
     generator.eval()
+    discriminator.eval()
     running_g_loss = 0.0
     running_g_rec_loss = 0.0
     running_g_percep_loss = 0.0
     running_g_gan_loss = 0.0
     running_g_colorfulness_loss = 0.0
 
-    loop = tqdm(dataloader, leave=True)
+    loop = tqdm(val_loader, leave=True)
 
-    for gray_rgb, gt_rgb, l, gt_ab in loop:
-        gray_rgb = gray_rgb.to(device)
-        gt_rgb = gt_rgb.to(device)
-        l = l.to(device)
-        gt_ab = gt_ab.to(device)
+    with torch.no_grad():
+        for gray_rgb, gt_rgb, l, gt_ab in loop:
+            gray_rgb = gray_rgb.to(device)
+            gt_rgb = gt_rgb.to(device)
+            l = l.to(device)
+            gt_ab = gt_ab.to(device)
 
-        with autocast(device_type=device.type):
             output_ab = generator(gray_rgb)
 
-        output_lab = torch.cat([l, output_ab], dim=1)
-        output_rgb = tensor_lab2rgb(output_lab)
+            output_lab = torch.cat([l, output_ab], dim=1)
+            output_rgb = tensor_lab2rgb(output_lab)
 
-        with autocast(device_type=device.type):
             fake_g_pred = discriminator(output_rgb)
 
             rec_loss = l1_criterion(output_ab, gt_ab)
@@ -139,21 +139,22 @@ def calculate_val_loss(generator, dataloader, l1_criterion, perceptual_criterion
 
             loss_g = rec_loss + percep_loss + gan_loss + colorfulness_loss
 
-        running_g_loss += loss_g.item()
-        running_g_rec_loss += rec_loss.item()
-        running_g_percep_loss += percep_loss.item()
-        running_g_gan_loss += gan_loss.item()
-        running_g_colorfulness_loss += colorfulness_loss.item()
+            running_g_loss += loss_g.item()
+            running_g_rec_loss += rec_loss.item()
+            running_g_percep_loss += percep_loss.item()
+            running_g_gan_loss += gan_loss.item()
+            running_g_colorfulness_loss += colorfulness_loss.item()
 
-        loop.set_description(f"Total_G: {loss_g.item():.4f}, Rec: {rec_loss.item():.4f}, Percep: {percep_loss.item():.4f}, GAN: {gan_loss.item():.4f}, Color: {colorfulness_loss.item():.4f}")
+            loop.set_description(f"Total_G: {loss_g.item():.4f}, Rec: {rec_loss.item():.4f}, Percep: {percep_loss.item():.4f}, GAN: {gan_loss.item():.4f}, Color: {colorfulness_loss.item():.4f}")
 
     epoch_loss = {
-        'g_loss': running_g_loss / len(dataloader),
-        'g_rec_loss': running_g_rec_loss / len(dataloader),
-        'g_percep_loss': running_g_percep_loss / len(dataloader),
-        'g_gan_loss': running_g_gan_loss / len(dataloader),
-        'g_colorfulness_loss': running_g_colorfulness_loss / len(dataloader),
+        'g_loss': running_g_loss / len(val_loader),
+        'g_rec_loss': running_g_rec_loss / len(val_loader),
+        'g_percep_loss': running_g_percep_loss / len(val_loader),
+        'g_gan_loss': running_g_gan_loss / len(val_loader),
+        'g_colorfulness_loss': running_g_colorfulness_loss / len(val_loader),
     }
+
     return epoch_loss
 
 
@@ -179,7 +180,7 @@ def train(model, discriminator, train_loader, val_loader, g_optimizer, d_optimiz
         g_scheduler.step()
         d_scheduler.step()
 
-        val_loss = calculate_val_loss(model, val_loader, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, device)
+        val_loss = calculate_val_loss(model, discriminator, val_loader, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, device)
         val_losses.append(val_loss)
         print(f'Epoch {epoch+1}, Val Loss: {val_loss}')
 

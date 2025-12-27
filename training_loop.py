@@ -12,6 +12,7 @@ import time
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from torch.optim.lr_scheduler import StepLR
+import json
 
 # Config
 BATCH_SIZE = 12
@@ -95,7 +96,7 @@ def train_one_epoch(
 
         loop.set_description(f"Total_G: {loss_g.item():.4f}, Rec: {rec_loss.item():.4f}, Percep: {percep_loss.item():.4f}, GAN: {gan_loss.item():.4f}, Color: {colorfulness_loss.item():.4f}, D: {loss_d.item():.4f}")
 
-    epoch_losses = {
+    epoch_loss = {
         'g_loss': running_g_loss / len(dataloader),
         'g_rec_loss': running_g_rec_loss / len(dataloader),
         'g_percep_loss': running_g_percep_loss / len(dataloader),
@@ -103,7 +104,7 @@ def train_one_epoch(
         'g_colorfulness_loss': running_g_colorfulness_loss / len(dataloader),
         'd_loss': running_d_loss / len(dataloader),
     }
-    return epoch_losses
+    return epoch_loss
 
 
 def calculate_val_loss(generator, dataloader, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, device):
@@ -146,14 +147,14 @@ def calculate_val_loss(generator, dataloader, l1_criterion, perceptual_criterion
 
         loop.set_description(f"Total_G: {loss_g.item():.4f}, Rec: {rec_loss.item():.4f}, Percep: {percep_loss.item():.4f}, GAN: {gan_loss.item():.4f}, Color: {colorfulness_loss.item():.4f}")
 
-    epoch_losses = {
+    epoch_loss = {
         'g_loss': running_g_loss / len(dataloader),
         'g_rec_loss': running_g_rec_loss / len(dataloader),
         'g_percep_loss': running_g_percep_loss / len(dataloader),
         'g_gan_loss': running_g_gan_loss / len(dataloader),
         'g_colorfulness_loss': running_g_colorfulness_loss / len(dataloader),
     }
-    return epoch_losses
+    return epoch_loss
 
 
 def train(model, discriminator, train_loader, val_loader, g_optimizer, d_optimizer, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, device, num_epochs=10, current_epoch=0):
@@ -171,9 +172,9 @@ def train(model, discriminator, train_loader, val_loader, g_optimizer, d_optimiz
     )
 
     for epoch in range(current_epoch, num_epochs):
-        epoch_losses = train_one_epoch(model, discriminator, train_loader, g_optimizer, d_optimizer, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, scaler, device)
-        train_losses.append(epoch_losses)
-        print(f'Epoch {epoch+1}, Train Loss: {epoch_losses}')
+        train_loss = train_one_epoch(model, discriminator, train_loader, g_optimizer, d_optimizer, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, scaler, device)
+        train_losses.append(train_loss)
+        print(f'Epoch {epoch+1}, Train Loss: {train_loss}')
 
         g_scheduler.step()
         d_scheduler.step()
@@ -181,6 +182,8 @@ def train(model, discriminator, train_loader, val_loader, g_optimizer, d_optimiz
         val_loss = calculate_val_loss(model, val_loader, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, device)
         val_losses.append(val_loss)
         print(f'Epoch {epoch+1}, Val Loss: {val_loss}')
+
+        save_metrics(train_loss, val_loss, epoch+1)
 
         if (epoch+1) % 2 == 0:
             save_checkpoint(model, discriminator, g_optimizer, d_optimizer, epoch+1, save_dir="checkpoints")
@@ -213,6 +216,19 @@ def save_checkpoint(model, discriminator, g_optimizer, d_optimizer, epoch, save_
     path = os.path.join(save_dir, f"{prefix}_epoch{epoch}.pth")
     torch.save(checkpoint, path)
     print(f"[INFO] Checkpoint saved at {path}")
+
+
+def save_metrics(train_loss, val_loss, epoch, save_dir="training_metrics"):
+    os.makedirs(save_dir, exist_ok=True)
+    metrics = {
+        "epoch": epoch,
+        "train_loss": train_loss,
+        "val_loss": val_loss
+    }
+    path = os.path.join(save_dir, f"metrics_epoch{epoch}.json")
+    with open(path, 'w') as f:
+        json.dump(metrics, f, indent=4)
+    print(f"[INFO] Metrics saved at {path}")
 
 
 if __name__ == '__main__':

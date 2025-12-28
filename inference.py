@@ -12,10 +12,10 @@ def inference(model, image):
 
 if __name__ == '__main__':
     device = torch.device("cpu")
-    model = DDColor("convnext-t", num_queries=100, num_scales=3, nf=512, num_output_channels=2).to(device)
-    model.load_state_dict(torch.load("checkpoints2/ddcolor_epoch10.pth")["generator_state_dict"])
+    model = DDColor(num_queries=100, num_scales=3, nf=512, num_output_channels=2).to(device)
+    model.load_state_dict(torch.load("checkpoints/ddcolor_epoch20.pth")["generator_state_dict"])
     root_dir = "val_input_test/"
-    output_dir = "val_output/"
+    output_dir = "val_output_test/"
 
     os.makedirs(output_dir, exist_ok=True)
     for filename in os.listdir(root_dir):
@@ -34,9 +34,7 @@ if __name__ == '__main__':
         out_ab = out_ab_batch[0].cpu().numpy().transpose((1, 2, 0))
 
         out_lab = np.concatenate((img_l, out_ab), axis=-1)
-        out_lab[:,:,1] = np.clip(out_lab[:,:,1], -127, 127)
-        out_lab[:,:,2] = np.clip(out_lab[:,:,2], -127, 127)
 
         out_bgr = cv2.cvtColor(out_lab, cv2.COLOR_Lab2BGR)
-        out_bgr_uint8 = np.clip(out_bgr * 255.0, 0, 255).astype(np.uint8)
+        out_bgr_uint8 = (out_bgr * 255.0).astype(np.uint8)
         cv2.imwrite(output_dir + filename, out_bgr_uint8)

@@ -4,10 +4,10 @@ __pycache__/
 train2017/
 val2017/
 venv/
-checkpoints/
+checkpoints*
 models/
 test_dataset/
 test.py
-training_metrics/
+training_metrics*
 val_output_test/
 val_input_test/

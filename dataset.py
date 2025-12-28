@@ -21,6 +21,7 @@ class ImageDataset(Dataset):
         img = (img / 255.0).astype(np.float32)
         img_resized = cv2.resize(img, (256, 256))
 
+        img_rgb = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
         img_lab = cv2.cvtColor(img_resized, cv2.COLOR_BGR2Lab)
         img_l = img_lab[:, :, :1]
         img_ab = img_lab[:, :, 1:]
@@ -32,7 +33,7 @@ class ImageDataset(Dataset):
         tensor_ab = torch.from_numpy(img_ab.transpose((2, 0, 1))).float()
 
         tensor_l = torch.from_numpy(img_l.transpose((2, 0, 1))).float()
-        tensor_rgb = torch.from_numpy(img_resized.transpose((2, 0, 1))).float()
+        tensor_rgb = torch.from_numpy(img_rgb.transpose((2, 0, 1))).float()
 
         return tensor_gray_rgb, tensor_rgb, tensor_l, tensor_ab
     

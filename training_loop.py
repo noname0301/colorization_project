@@ -158,7 +158,15 @@ def calculate_val_loss(generator, discriminator, val_loader, l1_criterion, perce
     return epoch_loss
 
 
-def train(model, discriminator, train_loader, val_loader, g_optimizer, d_optimizer, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, device, num_epochs=10, current_epoch=0):
+def train(model, discriminator, train_loader, val_loader, g_optimizer, d_optimizer, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, device, num_epochs=10, last_epoch=0, last_checkpoint=None):
+    if last_checkpoint is not None:
+        checkpoint = torch.load(last_checkpoint, map_location=device)
+        model.load_state_dict(checkpoint["generator_state_dict"])
+        discriminator.load_state_dict(checkpoint["discriminator_state_dict"])
+        g_optimizer.load_state_dict(checkpoint["g_optimizer_state_dict"])
+        d_optimizer.load_state_dict(checkpoint["d_optimizer_state_dict"])
+
+    
     start_time = time.time()
     train_losses = []
     val_losses = []
@@ -166,13 +174,14 @@ def train(model, discriminator, train_loader, val_loader, g_optimizer, d_optimiz
     scaler = GradScaler()
 
     g_scheduler = StepLR(
-        g_optimizer, step_size=10, gamma=0.5
+        g_optimizer, step_size=10, gamma=0.5, last_epoch=last_epoch-1
     )
     d_scheduler = StepLR(
-        d_optimizer, step_size=10, gamma=0.5
+        d_optimizer, step_size=10, gamma=0.5, last_epoch=last_epoch-1
     )
 
-    for epoch in range(current_epoch, num_epochs):
+
+    for epoch in range(last_epoch, num_epochs):
         train_loss = train_one_epoch(model, discriminator, train_loader, g_optimizer, d_optimizer, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, scaler, device)
         train_losses.append(train_loss)
         print(f'Epoch {epoch+1}, Train Loss: {train_loss}')
@@ -239,16 +248,12 @@ if __name__ == '__main__':
 
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True)
 
-    current_checkpoint = None
-    current_epoch = 0
+    last_checkpoint = None
+    last_epoch = 0
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = DDColor(num_queries=100, num_scales=3, nf=512, num_output_channels=2).to(device)
-
-    if current_checkpoint is not None:
-        checkpoint = torch.load(current_checkpoint, map_location=device)
-        model.load_state_dict(checkpoint["generator_state_dict"])
     discriminator = DynamicUNetDiscriminator(n_channels=3, nf=64, n_blocks=3).to(device)
 
 
@@ -260,7 +265,7 @@ if __name__ == '__main__':
     g_optimizer = torch.optim.AdamW(model.parameters(), lr=GENERATOR_LR, betas=(0.9, 0.99), weight_decay=0.01)
     d_optimizer = torch.optim.Adam(discriminator.parameters(), lr=DISCRIMINATOR_LR, betas=(0.9, 0.99))
 
-    train_losses, train_time = train(model, discriminator, train_loader, val_loader, g_optimizer, d_optimizer, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, device, num_epochs=NUM_EPOCHS, current_epoch=current_epoch)
+    train_losses, train_time = train(model, discriminator, train_loader, val_loader, g_optimizer, d_optimizer, l1_criterion, perceptual_criterion, gan_criterion, colorfulness_criterion, device, num_epochs=NUM_EPOCHS, last_epoch=last_epoch, last_checkpoint=last_checkpoint)
     print(f'Total training time: {train_time:.2f}s')
 
     # Visualize result

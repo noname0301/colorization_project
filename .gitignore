@@ -8,3 +8,6 @@ checkpoints/
 models/
 test_dataset/
 test.py
+training_metrics/
+val_output_test/
+val_input_test/

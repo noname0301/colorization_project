@@ -177,7 +177,7 @@ def tensor_lab2rgb(labs, illuminant="D65", observer="2"):
     Args:
         lab    : (B, C, H, W)
     Returns:
-        tuple   : (C, H, W)
+        rgb    : (B, C, H, W)
     """
     illuminants = \
         {"A": {'2': (1.098466069456375, 1, 0.3558228003436005),

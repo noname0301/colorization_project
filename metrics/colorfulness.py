@@ -1,7 +1,8 @@
 import torch
 
-def calculate_colorfulness(images):
+def calculate_colorfulness(images, device='cpu'):
     # images: (B, 3, H, W)
+    images = images.float().to(device)     # (B, 3, H, W)
     if images.max() <= 1.0:
         images = images * 255.0
     R, G, B = images[:,0], images[:,1], images[:,2]

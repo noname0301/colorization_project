@@ -1,6 +1,6 @@
 import cv2
 import os
-from metrics import calculate_psnr, calculate_ssim, calculate_ms_ssim, calculate_colorfulness, calculate_fid
+from metrics import calculate_psnr_ssim, calculate_colorfulness, calculate_fid
 import numpy as np
 import torch
 import json
@@ -41,10 +41,8 @@ if __name__ == '__main__':
     images_real = torch.from_numpy(images_real)
     images_fake = torch.from_numpy(images_fake)
 
-    psnr = calculate_psnr(images_real, images_fake)
-    ssim = calculate_ssim(images_real, images_fake)
-    ms_ssim = calculate_ms_ssim(images_real, images_fake)
-    colorfulness = calculate_colorfulness(images_fake)
+    psnr, ssim, ms_ssim = calculate_psnr_ssim(images_real, images_fake, device=device)
+    colorfulness = calculate_colorfulness(images_fake, device=device)
     fid = calculate_fid(images_real, images_fake, device=device)
 
     metrics = {

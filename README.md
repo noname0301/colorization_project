@@ -96,12 +96,12 @@ Configure dataset paths in the respective scripts:
 - `VAL_DIR`: Validation dataset directory (default: `"val2017/"`)
 
 **For Inference** (in `inference.py`):
-- `INPUT_DIR`: Input images directory (default: `"val_input_test/"`)
-- `OUTPUT_DIR`: Output images directory (default: `"val_output_test/"`)
+- `INPUT_DIR`: Input images directory
+- `OUTPUT_DIR`: Output images directory
 
 **For Metrics** (in `calculate_metrics.py`):
-- `input_dir`: Ground truth images directory (default: `"val_input_test/"`)
-- `output_dir`: Generated images directory (default: `"val_output_test/"`)
+- `input_dir`: Ground truth images directory
+- `output_dir`: Generated images directory
 
 **Dataset Requirements**:
 - Image format: JPEG (recommended)
@@ -184,8 +184,8 @@ python calculate_metrics.py
 ```
 
 **Configuration** (edit in `calculate_metrics.py`):
-- `input_dir`: Directory with original/ground truth images (default: `"val_input_test/"`)
-- `output_dir`: Directory with colorized images (default: `"val_output_test/"`)
+- `input_dir`: Directory with original/ground truth images
+- `output_dir`: Directory with colorized images
 
 The script will calculate and display:
 - **PSNR**: Peak Signal-to-Noise Ratio

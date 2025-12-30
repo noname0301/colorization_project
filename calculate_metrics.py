@@ -38,7 +38,7 @@ if __name__ == '__main__':
     psnr = calculate_psnr(images_real, images_fake)
     ssim = calculate_ssim(images_real, images_fake)
     ms_ssim = calculate_ms_ssim(images_real, images_fake)
-    colorfulness = calculate_colorfulness(images_real)
+    colorfulness = calculate_colorfulness(images_fake)
     fid = calculate_fid(images_real, images_fake)
 
     print("PSNR:", psnr)

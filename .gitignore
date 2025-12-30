@@ -10,4 +10,5 @@ models/
 test_dataset/
 test.py
 training_metrics*
+evaluation_metrics*
 output*

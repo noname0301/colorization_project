@@ -4,6 +4,10 @@ import cv2
 import numpy as np
 import os
 
+
+INPUT_DIR = "val_input_test/"
+OUTPUT_DIR = "val_output_test/"
+
 def inference(model, image):
     model.eval()
     with torch.no_grad():
@@ -35,11 +39,9 @@ if __name__ == '__main__':
     device = torch.device("cpu")
     model = DDColor(num_queries=100, num_scales=3, nf=512, num_output_channels=2).to(device)
     model.load_state_dict(torch.load("checkpoints/ddcolor_epoch20.pth")["generator_state_dict"])
-    root_dir = "val_input_test/"
-    output_dir = "val_output_test/"
 
-    os.makedirs(output_dir, exist_ok=True)
-    for filename in os.listdir(root_dir):
-        infer_one_image(model, root_dir + filename, output_dir + filename)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    for filename in os.listdir(INPUT_DIR):
+        infer_one_image(model, INPUT_DIR + filename, OUTPUT_DIR + filename)
 
 

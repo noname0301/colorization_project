@@ -19,6 +19,8 @@ BATCH_SIZE = 12
 NUM_EPOCHS = 20
 GENERATOR_LR = 1e-4
 DISCRIMINATOR_LR = 1e-4
+TRAIN_DIR = "train2017/"
+VAL_DIR = "val2017/"
 
 
 def train_one_epoch(
@@ -242,8 +244,8 @@ def save_metrics(train_loss, val_loss, epoch, save_dir="training_metrics"):
 
 
 if __name__ == '__main__':
-    train_dataset = ImageDataset('train2017/')
-    val_dataset = ImageDataset('val2017/')
+    train_dataset = ImageDataset(TRAIN_DIR)
+    val_dataset = ImageDataset(VAL_DIR)
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True)
 
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True)

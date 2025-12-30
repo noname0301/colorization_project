@@ -4,6 +4,7 @@ from scipy import linalg
 import torch.nn as nn
 import torch
 from torchvision.models import inception_v3, Inception_V3_Weights
+from tqdm import tqdm
 
 
 class INCEPTION_V3_FID(nn.Module):
@@ -56,8 +57,9 @@ def get_activations(images, model, batch_size=16, device='cpu'):
     n_images = images.size(0)
     activations = []
 
+    loop = tqdm(range(0, n_images, batch_size), leave=True)
     with torch.no_grad():
-        for start in range(0, n_images, batch_size):
+        for start in loop:
             end = start + batch_size
             batch = images[start:end].to(device)
             feat = model(batch)  # shape (B, 2048)
@@ -154,5 +156,5 @@ if __name__ == '__main__':
     images_real = torch.rand(100, 3, 256, 256)  # real images
     images_fake = torch.rand(100, 3, 256, 256)  # generated images
 
-    fid_score = calculate_fid(images_real, images_fake, batch_size=16, device='cuda')
+    fid_score = calculate_fid(images_real, images_fake, batch_size=12, device='cuda')
     print("FID:", fid_score)

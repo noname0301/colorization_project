@@ -3,6 +3,7 @@ __pycache__/
 *.pth
 train2017/
 val2017/
+test2017/
 venv/
 checkpoints*
 models/

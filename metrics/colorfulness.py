@@ -2,6 +2,8 @@ import torch
 
 def calculate_colorfulness(images):
     # images: (B, 3, H, W)
+    if images.max() <= 1.0:
+        images = images * 255.0
     R, G, B = images[:,0], images[:,1], images[:,2]
     rg = torch.abs(R - G)
     yb = torch.abs(0.5 * (R+G) - B)

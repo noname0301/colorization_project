@@ -9,6 +9,8 @@ if __name__ == '__main__':
     input_dir = "val_input_test/"
     output_dir = "val_output_test/"
 
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
     images_real = []
     images_fake = []
 
@@ -39,7 +41,7 @@ if __name__ == '__main__':
     ssim = calculate_ssim(images_real, images_fake)
     ms_ssim = calculate_ms_ssim(images_real, images_fake)
     colorfulness = calculate_colorfulness(images_fake)
-    fid = calculate_fid(images_real, images_fake)
+    fid = calculate_fid(images_real, images_fake, device=device)
 
     print("PSNR:", psnr)
     print("SSIM:", ssim)

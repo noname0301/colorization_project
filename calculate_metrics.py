@@ -3,18 +3,23 @@ import os
 from metrics import calculate_psnr, calculate_ssim, calculate_ms_ssim, calculate_colorfulness, calculate_fid
 import numpy as np
 import torch
+import json
+from tqdm import tqdm
 
 
 if __name__ == '__main__':
-    input_dir = "val_input_test/"
-    output_dir = "val_output_test/"
+    input_dir = "test2017/"
+    output_dir = "output_test2017/"
+
+    MAX_IMAGES = 10000
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     images_real = []
     images_fake = []
 
-    for filename in os.listdir(input_dir):
+    loop = tqdm(os.listdir(input_dir)[:MAX_IMAGES], leave=True)
+    for filename in loop:
         img = cv2.imread(input_dir + filename)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         img = (img / 255.0).astype(np.float32)
@@ -22,7 +27,8 @@ if __name__ == '__main__':
         img = np.transpose(img, (2, 0, 1))
         images_real.append(img)
 
-    for filename in os.listdir(output_dir):
+    loop = tqdm(os.listdir(output_dir)[:MAX_IMAGES], leave=True)
+    for filename in loop:
         img = cv2.imread(output_dir + filename)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         img = (img / 255.0).astype(np.float32)
@@ -35,16 +41,25 @@ if __name__ == '__main__':
     images_real = torch.from_numpy(images_real)
     images_fake = torch.from_numpy(images_fake)
 
-    print(images_real.shape, images_fake.shape)
-
     psnr = calculate_psnr(images_real, images_fake)
     ssim = calculate_ssim(images_real, images_fake)
     ms_ssim = calculate_ms_ssim(images_real, images_fake)
     colorfulness = calculate_colorfulness(images_fake)
     fid = calculate_fid(images_real, images_fake, device=device)
 
+    metrics = {
+        "psnr": psnr,
+        "ssim": ssim,
+        "ms_ssim": ms_ssim,
+        "colorfulness": colorfulness,
+        "fid": fid
+    }
+
     print("PSNR:", psnr)
     print("SSIM:", ssim)
     print("MS-SSIM:", ms_ssim)
     print("Colorfulness:", colorfulness)
     print("FID:", fid)
+
+    with open("evaluation_metrics.json", "w") as f:
+        json.dump(metrics, f, indent=4)
